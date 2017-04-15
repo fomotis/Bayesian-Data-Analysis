@@ -1,0 +1,38 @@
+
+    model
+    {
+      for(j in 1:U)
+      {
+        for(i in 1:nc[j])
+        {
+             temp[cumnc[j]+ i] <- (logmp[cumnc[j]+ i] - beta0 - beta1*Heifer[cumnc[j]+ i] - beta2*Quarter1[cumnc[j]+ i] - beta3*Quarter2[cumnc[j]+ i]  - b[j])/sigma
+             s0[cumnc[j]+ i] <- 1 - pnorm(temp[cumnc[j]+ i],0,1)
+             f0[cumnc[j]+ i] <- pow(2*3.14,-0.5)*exp(-0.5*pow(temp[cumnc[j]+ i],2))
+             ll[cumnc[j]+ i] <- Status[cumnc[j]+ i]*log(f0[cumnc[j]+ i]/(sigma*Midpoint[cumnc[j]+ i])) + (1 - Status[cumnc[j]+ i])*log(s0[cumnc[j]+ i])
+
+        ##Zeros trick
+        zeros[cumnc[j]+ i] <- 0
+        new[cumnc[j]+ i] <- -ll[cumnc[j]+ i] + 10000
+        eros[cumnc[j]+ i] ~ dpois(new[cumnc[j]+ i])
+        }
+        #random effects
+        b[j] ~ dnorm(0,tau.b)
+      }
+    
+      #Priors
+      beta0 ~ dnorm(0,0E-3)
+      beta1 ~ dnorm(0,0E-3)
+      beta2 ~ dnorm(0,0E-3)
+      beta3 ~ dnorm(0,0E-3)
+      beta4 ~ dnorm(0,0E-3)
+      
+      #variance
+      inversegamma ~ dgamma(0.001,0.001)
+      sigma <- 1/inversegamma
+      
+      #between cows
+      sigma.b ~ dunif(0,100)
+      tau.b <- pow(sigma.b,-2)
+    }
+    
+    

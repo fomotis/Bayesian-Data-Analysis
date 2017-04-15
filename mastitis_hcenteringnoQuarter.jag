@@ -1,0 +1,39 @@
+
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] - beta1*Heifer[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    

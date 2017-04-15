@@ -1,0 +1,57 @@
+
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+
+      #median survival time
+      #quarter 4
+      med_Q4_h0 <- exp(beta0) #heifer=0
+      med_Q4_h1 <- exp(beta0 + beta1) #heifer=1
+      #quarter1
+      med_Q1_h0 <- exp(beta0 + beta2)  #heifer=0
+      med_Q1_h1 <- exp(beta0 + beta1 + beta2)  #heifer=1
+      #quarter2
+      med_Q2_h0 <- exp(beta0 + beta3)  #heifer=0
+      med_Q2_h1 <- exp(beta0 + beta1 + beta3)  #heifer=1
+      #quarter3
+      med_Q3_h0 <- exp(beta0 + beta4)  #heifer=0
+      med_Q3_h1 <- exp(beta0 + beta1 + beta4)  #heifer=1
+      
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    

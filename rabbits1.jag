@@ -1,0 +1,103 @@
+
+    model{
+      for(i in 1:N){
+        mu[i] = alpha*exp(-(beta/(Age[i] + gamma)))
+        epsilon[i] = Lens[i] - mu[i]
+        Lens[i] ~ dnorm(mu[i],tau.e)
+        #samppling a new lens
+        Lens.new[i] ~ dnorm(mu[i], tau.e)
+        epsilon.new[i] = Lens.new[i] - mu[i]
+      }
+
+        ##PPCs
+        #test1 min and max
+        epsilon_min <- min(epsilon[])
+        epsilon.new_min <- min(epsilon.new[])
+
+        epsilon_max <- max(epsilon[])
+        epsilon.new_max <- max(epsilon.new[])
+
+        #tests
+        t_min <- step(epsilon.new_min - epsilon_min)
+        t_max <- step(epsilon.new_max - epsilon_max)
+
+        ##test2 Sinharay and Stern
+        N_med <- round(N/2)
+        epsilon_sort <- sort(epsilon)
+        epsilon_med <- epsilon_sort[N_med]
+        epsilon.new_sort <- sort(epsilon.new)
+        epsilon.new_med <- epsilon.new_sort[N_med]
+
+        ss <- abs(epsilon_max - epsilon_med) - abs(epsilon_min - epsilon_med)
+        ss.rep <-abs(epsilon.new_max - epsilon.new_med) - abs(epsilon.new_min - epsilon.new_med)
+        ss.test <- step(ss.rep - ss)  	
+        
+        ##tests3 Skewness and Kurtosis
+        for(k in 1:N){
+            #skewness
+            skb[k] <- pow((epsilon[k] - 0)/sigma.e,3)
+            skb.rep[k] <- pow((epsilon.new[k] - 0)/sigma.e,3)
+            #kurtosis
+            kkb[k] <- pow((epsilon[k] - 0)/sigma.e,4)
+            kkb.rep[k] <- pow((epsilon.new[k] - 0)/sigma.e,4)
+        }
+
+        skew_epsilon <- mean(skb[])
+        skew_epsilon.new <- mean(skb.rep[])
+        #skewness test
+        skew_test <- step(skew_epsilon.new - skew_epsilon)
+      
+        kurt_epsilon <- mean(kkb[])-3
+        kurt_epsilon.new <- mean(kkb.rep[])-3
+        kurt_test <- step(kurt_epsilon.new - kurt_epsilon)
+
+      ###test 4 Kolmogorov
+      rank_epsilon <- sort(epsilon[])
+      rank_epsilon.new <- sort(epsilon.new[])
+
+      for(k in 1:N){
+        F_epsilon[k] <- phi(rank_epsilon[k])
+        F_epsilon.new[k] <- phi(rank_epsilon.new[k])
+
+        F_diff[k] <- max(F_epsilon[k] - (k-1)/N, k/N - F_epsilon[k])
+        F_diff.rep[k] <- max(F_epsilon.new[k] - (k-1)/N, k/N - F_epsilon.new[k])
+      }
+      ks_epsilon <- max(F_diff)
+      ks_epsilon.new <- max(F_diff.rep)
+        
+      ks_test <- step(ks_epsilon.new - ks_epsilon)
+
+      ###tests
+      ppc_test[1] <- t_min
+      ppc_test[2] <- t_max
+      ppc_test[3] <- ss.test
+      ppc_test[4] <- skew_test
+      ppc_test[5] <- kurt_test
+      ppc_test[6] <- ks_test
+
+    ###PPC measures
+      #ppc_measure[1] <- b_min
+      #ppc_measure[2] <- b.rep_min
+      #ppc_measure[3] <- b_max
+      #ppc_measure[4] <- b.rep_max
+      #ppc_measure[5] <- ss
+      #ppc_measure[6] <- ss.rep
+      #ppc_measure[7] <- skew_b
+      #ppc_measure[8] <- skew_b.rep
+      #ppc_measure[9] <- kurt_b
+      #ppc_measure[10] <- kurt_b.rep
+      #ppc_measure[11] <- ks_b
+      #ppc_measure[12] <- ks_b.rep
+
+      
+      
+    #prior
+    alpha ~ dnorm(0,1.0E-6)
+    beta ~ dnorm(0,1.0E-6)
+    gamma ~ dnorm(0,1.0E-6)
+    #variance of epsilon
+    tau.e = pow(sigma.e,-2)
+    sigma.e ~ dgamma(0.001,0.001)
+    }
+    
+    

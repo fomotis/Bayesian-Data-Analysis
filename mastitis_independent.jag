@@ -1,0 +1,30 @@
+
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+        #
+         epsilon[j] <- (logmp[j] - beta0 - beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] )/sigma.e
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+      
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dunif(0,100)
+    }
+    
+    

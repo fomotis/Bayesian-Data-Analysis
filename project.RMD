@@ -1,0 +1,1248 @@
+---
+title: "Bayesian Codes"
+author: "Olusoji Oluwafemi Daniel(1541893)"
+date: "April 3, 2017"
+output: html_document
+---
+
+```{r setup}
+rm(list = ls())
+library(tidyverse)
+library(coda)
+library(MCMCpack)
+library(mcmcplots)
+library(boa)
+library(ggmcmc)
+library(runjags)
+library(R2jags)
+#The 2 Data set
+mastitis <- read.table('./Data/mastitis.dat',header=T,sep=',')
+rabbit <- read.table('./Data/rabbit.txt',header=T)
+```
+
+### Exploratory Analysis
+
+```{r}
+
+```
+
+### AFT Survival Model
+
+```{r question1}
+set.seed(123)
+mastitis$Quarter1 <- as.numeric(mastitis$Quarter==1)
+mastitis$Quarter2 <- as.numeric(mastitis$Quarter==2)
+mastitis$Quarter3 <- as.numeric(mastitis$Quarter==3)
+#creating logmp
+mastitis$logmp <- log(mastitis$Midpoint)
+N <- length(mastitis$Cowid)
+U <- length(unique(mastitis$Cowid))
+
+#JAGS version
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+        #
+         epsilon[j] <- (logmp[j] - beta0 - beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+      
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis2.jag")
+
+#the data
+mastitisdata <- list(Cowid=mastitis$Cowid,
+                     Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     Heifer=mastitis$Heifer,
+                     Quarter1=mastitis$Quarter1,
+                     Quarter2=mastitis$Quarter2,
+                     Quarter3=mastitis$Quarter3,
+                     zeroes=rep(0,400),
+                     U=length(unique(mastitis$Cowid)),
+                     N=nrow(mastitis))
+
+#the initial values
+mastitisini <- list(list(beta0=4.2,
+                          beta1=-0.43,
+                          beta2=0.05,
+                          beta3=0.10,
+                          beta4=-0.01,
+                          sigma.e=0.45,
+                          sigma.b=0.82),
+                     list(beta0=3.1,
+                          beta1=-0.13,
+                          beta2=0.06,
+                          beta3=0.23,
+                          beta4=-0.15,
+                          sigma.e=0.31,
+                          sigma.b=0.95),
+                     list(beta0=7.5,
+                          beta1=-0.45,
+                          beta2=0.10,
+                          beta3=0.05,
+                          beta4=-0.012,
+                          sigma.e=0.76,
+                          sigma.b=0.2))
+
+mastitis_model <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=50000,n.burnin=25000,n.chains=length(mastitisini),model.file="mastitis2.jag",n.thin=1,DIC=T)
+
+#as an mcmc object
+mastitis_model_mcmc <- as.mcmc(mastitis_model)
+#as a ggs object
+mastitis_model_gg <- ggs(mastitis_model_mcmc)
+
+#convergence Diagnostics
+#traceplots
+ggs_traceplot(mastitis_model_gg)
+
+#autocorrelation plot
+ggs_autocorrelation(mastitis_model_gg)+theme_classic()
+
+#running mean
+ggs_running(mastitis_model_gg) + theme_classic()
+
+#cross-correlation plot
+ggs_crosscorrelation(mastitis_model_gg) + theme_classic()
+
+#geweke diagnostic
+ggs_geweke(mastitis_model_gg,frac1=0.1,frac2=0.5) + theme_classic()
+
+#BGR diagnostics version 1(R_c)
+ggs_Rhat(mastitis_model_gg)+ theme_classic()
+
+#BGR diagnostic version 2
+gelman.plot(mastitis_model_mcmc)
+
+#time series approach to estimating monte carlo standard error(MCSE)
+summary(mastitis_model_mcmc)
+
+#effective sample size
+effectiveSize(mastitis_model_mcmc)
+
+###Model with Hierarchical Centering
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_hcentering.jag")
+
+mastitisdata <- list(Cowid=mastitis$Cowid,
+                     Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     Heifer=mastitis$Heifer,
+                     Quarter1=mastitis$Quarter1,
+                     Quarter2=mastitis$Quarter2,
+                     Quarter3=mastitis$Quarter3,
+                     zeroes=rep(0,400),
+                     U=length(unique(mastitis$Cowid)),
+                     N=nrow(mastitis))
+
+mastitis_hmodel <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering.jag",n.thin=1,DIC=T)
+
+##Convergence check for the hierarchical centered model(high autocorrelation noted
+#for beta0 and beta1)
+mastitis_hmodel_mcmc <-  coda::as.mcmc(mastitis_hmodel)
+mastitis_hmodel_mcmc_ggs <- ggs(mastitis_hmodel_mcmc)
+
+#traceplots
+ggs_traceplot(mastitis_hmodel_mcmc_ggs)+theme_classic()
+
+#autocorrelation plot
+ggs_autocorrelation(mastitis_hmodel_mcmc_ggs) + theme_bw()
+
+#running mean
+ggs_running(mastitis_hmodel_mcmc_ggs) + theme_classic()
+
+#cross-correlation plot
+ggs_crosscorrelation(mastitis_hmodel_mcmc_ggs) + theme_classic()
+
+#BGR diagnostics version 1(R_c)
+ggs_Rhat(mastitis_hmodel_mcmc_ggs)+ theme_classic()
+
+#BGR diagnostic version 2
+gelman.plot(mastitis_hmodel_mcmc)
+
+#results
+summary(as.mcmc(mastitis_hmodel))
+
+effectiveSize(mastitis_hmodel)
+
+
+#Monitoring the random effects
+mastitis_hmodel_reffcts <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c('b'),n.iter=20000,n.burnin=10000,n.chains=3,model.file="mastitis_hcentering.jag",n.thin=1,DIC=T)
+
+###Checking convergence of randomly selected random effects
+mastitis_hmodel_reffcts_mcmc <- as.mcmc(mastitis_hmodel_reffcts)
+mastitis_hmodel_reffcts_ggs <- ggs(mastitis_hmodel_reffcts_mcmc)
+#posterior means across the 3 chains
+psmean_reffects <- mastitis_hmodel_reffcts_ggs %>% group_by(Parameter)  %>% summarise(Mean=mean(value))
+
+###Histogram of Random Effects
+hist(psmean_reffects$Mean[-101],xlab="b",main="Histogram of Posterior Means of Normal Random Intercepts",probability=T,col="cyan4")
+
+
+##### PPC Check
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+        #distribution of future observation k (b.rep)
+        b.rep[k] ~ dnorm(beta0,tau.b)
+      }
+
+        ##PPCs
+        #test1 min and max
+        b_min <- min(b[])
+        b.rep_min <- min(b.rep[])
+
+        b_max <- max(b[])
+        b.rep_max <- max(b.rep[])
+
+        #tests
+        t_min <- step(b.rep_min - b_min)
+        t_max <- step(b.rep_max - b_max)
+
+        ##test2 Sinharay and Stern
+        U_med <- round(U/2)
+        b_sort <- sort(b)
+        b_med <- b_sort[U_med]
+        b.rep_sort <- sort(b.rep)
+        b.rep_med <- b.rep_sort[U_med]
+
+        ss <- abs(b_max - b_med) - abs(b_min - b_med)
+        ss.rep <-abs(b.rep_max - b.rep_med) - abs(b.rep_min - b.rep_med)
+        ss.test <- step(ss.rep - ss)  	
+        
+        ##tests3 Skewness and Kurtosis
+        for(k in 1:U){
+            #skewness
+            skb[k] <- pow((b[k] - beta0)/sigma.b,3)
+            skb.rep[k] <- pow((b.rep[k] - beta0)/sigma.b,3)
+            #kurtosis
+            kkb[k] <- pow((b[k] - beta0)/sigma.b,4)
+            kkb.rep[k] <- pow((b.rep[k] - beta0)/sigma.b,4)
+        }
+
+        skew_b <- mean(skb[])
+        skew_b.rep <- mean(skb.rep[])
+        #skewness test
+        skew_test <- step(skew_b.rep-skew_b)
+      
+        kurt_b <- mean(kkb[])-3
+        kurt_b.rep <- mean(kkb.rep[])-3
+        kurt_test <- step(kurt_b.rep - kurt_b)
+
+      ###test 4 Kolmogorov
+      rank_b <- sort(b[])
+      rank_b.rep <- sort(b.rep[])
+
+      for(k in 1:U){
+        F_b[k] <- phi(rank_b[k])
+        F_b.rep[k] <- phi(rank_b.rep[k])
+
+        F_diff[k] <- max(F_b[k] - (k-1)/U, k/U - F_b[k])
+        F_diff.rep[k] <- max(F_b.rep[k] - (k-1)/U, k/U - F_b.rep[k])
+      }
+      ks_b <- max(F_diff)
+      ks_b.rep <- max(F_diff.rep)
+        
+      ks_test <- step(ks_b.rep - ks_b)
+
+      ###tests
+      ppc_test[1] <- t_min
+      ppc_test[2] <- t_max
+      ppc_test[3] <- ss.test
+      ppc_test[4] <- skew_test
+      ppc_test[5] <- kurt_test
+      ppc_test[6] <- ks_test
+
+    ###PPC measures
+      ppc_measure[1] <- b_min
+      ppc_measure[2] <- b.rep_min
+      ppc_measure[3] <- b_max
+      ppc_measure[4] <- b.rep_max
+      ppc_measure[5] <- ss
+      ppc_measure[6] <- ss.rep
+      ppc_measure[7] <- skew_b
+      ppc_measure[8] <- skew_b.rep
+      ppc_measure[9] <- kurt_b
+      ppc_measure[10] <- kurt_b.rep
+      ppc_measure[11] <- ks_b
+      ppc_measure[12] <- ks_b.rep
+      
+      #####Priors####
+
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+
+
+    }
+    
+    ",file="mastitis_hcenteringPPC.jag")
+
+mastitis_ppc <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("ppc_test","ppc_measure"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringPPC.jag",n.thin=1,DIC=T)
+
+####convert to MCMC
+mastitis_ppc_mcmc <- as.mcmc(mastitis_ppc)
+
+### Checking convergence of the posterior discrepancies(normal random effects okay)
+mastitis_ppc_ggs <- ggs(mastitis_ppc_mcmc)
+p_D <- mastitis_ppc_ggs %>% group_by(Parameter) %>% summarise(Mean=mean(value))
+
+###Varying prior specifications
+####varying prior for fixed effects()
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-6)
+      beta1 ~ dnorm(0,1.0E-6)
+      beta2 ~ dnorm(0,1.0E-6)
+      beta3 ~ dnorm(0,1.0E-6)
+      beta4 ~ dnorm(0,1.0E-6)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_hcenteringP2.jag")
+
+mastitis_prior1 <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringP2.jag",n.thin=1,DIC=T)
+
+
+####varying prior for random effects()
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-6)
+      beta1 ~ dnorm(0,1.0E-6)
+      beta2 ~ dnorm(0,1.0E-6)
+      beta3 ~ dnorm(0,1.0E-6)
+      beta4 ~ dnorm(0,1.0E-6)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.0001,0.0001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,1.0E9)
+    }
+    
+    ",file="mastitis_hcenteringP3.jag")
+
+mastitis_prior2 <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("sigma.b","sigma.e","b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringP3.jag",n.thin=1,DIC=T)
+
+###Not much effect was observed when the priors was varied
+summary(as.mcmc(mastitis_prior2))
+
+#### Removing unmportant covariates
+
+#no heifer
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_hcenteringnoHiefer.jag")
+
+mastitis_noH_data <- list(Cowid=mastitis$Cowid,
+                     Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     Quarter1=mastitis$Quarter1,
+                     Quarter2=mastitis$Quarter2,
+                     Quarter3=mastitis$Quarter3,
+                     zeroes=rep(0,400),
+                     U=length(unique(mastitis$Cowid)),
+                     N=nrow(mastitis))
+
+mastitis_noH_ini <- list(list(beta0=4.2,
+                          beta2=0.05,
+                          beta3=0.10,
+                          beta4=-0.01,
+                          sigma.e=0.45,
+                          sigma.b=0.82),
+                     list(beta0=3.1,
+                          beta2=0.06,
+                          beta3=0.23,
+                          beta4=-0.15,
+                          sigma.e=0.31,
+                          sigma.b=0.95),
+                     list(beta0=7.5,
+                          beta2=0.10,
+                          beta3=0.05,
+                          beta4=-0.012,
+                          sigma.e=0.76,
+                          sigma.b=0.2)
+  
+)
+
+mastitis_noHiefer <- jags(data=mastitis_noH_data,inits=mastitis_noH_ini,
+parameters.to.save=c("beta0","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoHiefer.jag",n.thin=1,DIC=T)
+
+summary(as.mcmc(mastitis_noHiefer))
+DIC_noHiefer <- mastitis_noHiefer$BUGSoutput$DIC - (2*400*10000)
+
+#no quarter 
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] - beta1*Heifer[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_hcenteringnoQuarter.jag")
+
+mastitis_noQ_data <- list(Cowid=mastitis$Cowid,
+                     Midpoint=mastitis$Midpoint,
+                     Heifer=mastitis$Heifer,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     zeroes=rep(0,400),
+                     U=length(unique(mastitis$Cowid)),
+                     N=nrow(mastitis))
+
+mastitis_noQ_ini <- list(list(beta0=4.2,
+                          beta1=-0.43,
+                          sigma.e=0.45,
+                          sigma.b=0.82),
+                     list(beta0=3.1,
+                          beta1=-0.43,
+                          sigma.e=0.31,
+                          sigma.b=0.95),
+                     list(beta0=7.5,
+                          beta1=-0.43,
+                          sigma.e=0.76,
+                          sigma.b=0.2)
+  
+)
+
+mastitis_noquarter <- jags(data=mastitis_noQ_data,inits=mastitis_noQ_ini,
+parameters.to.save=c("beta0","beta1","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoQuarter.jag",n.thin=1,DIC=T)
+
+summary(as.mcmc(mastitis_noquarter))
+#
+DIC_noQuarter <- mastitis_noquarter$BUGSoutput$DIC - (2*400*10000)
+
+###Model with no covariate
+
+#no covariates
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_hcenteringnoCovariates.jag")
+
+mastitis_noCOV_data <- list(Cowid=mastitis$Cowid,
+                     Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     zeroes=rep(0,400),
+                     U=length(unique(mastitis$Cowid)),
+                     N=nrow(mastitis))
+
+mastitis_noCOV_ini <- list(list(beta0=4.2,
+                          sigma.e=0.45,
+                          sigma.b=0.82),
+                     list(beta0=3.1,
+                          sigma.e=0.31,
+                          sigma.b=0.95),
+                     list(beta0=7.5,
+                          sigma.e=0.76,
+                          sigma.b=0.2)
+)
+
+mastitis_noCovariates <- jags(data=mastitis_noCOV_data,inits=mastitis_noCOV_ini,
+parameters.to.save=c("beta0","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoCovariates.jag",n.thin=1,DIC=T)
+
+
+summary(as.mcmc(mastitis_noCovariates))
+
+#Original DIC for no covariate model
+DIC_noCovariate <- mastitis_noCovariates$BUGSoutput$DIC - (2*400*10000)
+
+#DIC for the model with hierarchical centering
+DIC_full_model <- mastitis_hmodel$BUGSoutput$DIC - (2*400*10000)
+
+
+####Model without random effects(i.e. time to infection in each udder quarter is independent)
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+        #
+         epsilon[j] <- (logmp[j] - beta0 - beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] )/sigma.e
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+      
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_independent.jag")
+
+#the data
+mastitis_independent_data <- list(
+                     Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     Heifer=mastitis$Heifer,
+                     Quarter1=mastitis$Quarter1,
+                     Quarter2=mastitis$Quarter2,
+                     Quarter3=mastitis$Quarter3,
+                     zeroes=rep(0,400),
+                     N=nrow(mastitis))
+
+#the initial values
+mastitis_independent_ini <- list(list(beta0=4.2,
+                          beta1=-0.43,
+                          beta2=0.05,
+                          beta3=0.10,
+                          beta4=-0.01,
+                          sigma.e=0.45
+                          ),
+                     list(beta0=3.1,
+                          beta1=-0.13,
+                          beta2=0.06,
+                          beta3=0.23,
+                          beta4=-0.15,
+                          sigma.e=0.31
+                          ),
+                     list(beta0=7.5,
+                          beta1=-0.45,
+                          beta2=0.10,
+                          beta3=0.05,
+                          beta4=-0.012,
+                          sigma.e=0.76
+                          ))
+
+mastitis_inimodel <- jags(data=mastitis_independent_data,inits=mastitis_independent_ini, parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_independent.jag",n.thin=1,DIC=T)
+
+#Adjusted DIC for the independent model
+DIC_inimodel <- mastitis_inimodel$BUGSoutput$DIC - (2*10000*400)
+
+####Median survival Time for each group
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+      }
+
+      #median survival time
+      #quarter 4
+      med_Q4_h0 <- exp(beta0) #heifer=0
+      med_Q4_h1 <- exp(beta0 + beta1) #heifer=1
+      #quarter1
+      med_Q1_h0 <- exp(beta0 + beta2)  #heifer=0
+      med_Q1_h1 <- exp(beta0 + beta1 + beta2)  #heifer=1
+      #quarter2
+      med_Q2_h0 <- exp(beta0 + beta3)  #heifer=0
+      med_Q2_h1 <- exp(beta0 + beta1 + beta3)  #heifer=1
+      #quarter3
+      med_Q3_h0 <- exp(beta0 + beta4)  #heifer=0
+      med_Q3_h1 <- exp(beta0 + beta1 + beta4)  #heifer=1
+      
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis_median.jag")
+
+mastitis_median <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("med_Q4_h0","med_Q4_h1","med_Q1_h0","med_Q1_h1","med_Q2_h0","med_Q2_h1","med_Q3_h0","med_Q3_h1"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_median.jag",n.thin=1,DIC=T)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+####  Using t distribution for the random effects(Not needed since all PPC indicates good fit)
+
+cat("
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dt(beta0,tau.b,nu.b)
+      }
+        
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+      #prior for the degrees of freedom
+      nu.b <- 1/nu.inverse.b
+      nu.inverse.b ~ dunif(0,1)
+    }
+    
+    ",file="mastitis_hcentering_trandom.jag")
+
+mastitis_hmodel_trandom <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
+
+#monitoring Random effects
+mastitis_hmodel2_trandom <- jags(data=mastitisdata,inits=mastitisini,
+parameters.to.save=c("b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
+
+hist(mastitis_hmodel2_trandom$BUGSoutput$mean$b)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###Another Version
+
+cat("
+    model
+    {
+      for(j in 1:U)
+      {
+        for(i in 1:nc[j])
+        {
+             temp[cumnc[j]+ i] <- (logmp[cumnc[j]+ i] - beta0 - beta1*Heifer[cumnc[j]+ i] - beta2*Quarter1[cumnc[j]+ i] - beta3*Quarter2[cumnc[j]+ i] - beta4*Quarter3[cumnc[j]+ i] - b[j])/sigma
+             s0[cumnc[j]+ i] <- 1 - pnorm(temp[cumnc[j]+ i],0,1)
+             f0[cumnc[j]+ i] <- pow(2*3.14,-0.5)*exp(-0.5*pow(temp[cumnc[j]+ i],2))
+             ll[cumnc[j]+ i] <- Status[cumnc[j]+ i]*log(f0[cumnc[j]+ i]/(sigma*Midpoint[cumnc[j]+ i])) + (1 - Status[cumnc[j]+ i])*log(s0[cumnc[j]+ i])
+
+        ##Zeros trick
+        phi[cumnc[j]+ i] <- -ll[cumnc[j]+ i] + 10000
+        z[cumnc[j]+ i] ~ dpois(phi[cumnc[j]+ i])
+        }
+        #random effects
+        b[j] ~ dnorm(0,tau.b)
+      }
+    
+      #Priors
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+      sigma ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+    }
+    
+    ",file="mastitis.jag")
+
+#The data
+mastitis_dat <- list(Midpoint=mastitis$Midpoint,
+                     Status=mastitis$Status,
+                     logmp=mastitis$logmp,
+                     Heifer=mastitis$Heifer,
+                     Quarter1=mastitis$Quarter1,
+                     Quarter2=mastitis$Quarter2,
+                     Quarter3=mastitis$Quarter3,
+                     U=length(unique(mastitis$Cowid)),
+                     z=rep(0,400),
+                     nc=rep(4,100),
+                     cumnc=seq(0,396,by=4))
+
+#the starting values
+mastitis_ini <- list(list(beta0=4.2,
+                          beta1=-0.43,
+                          beta2=0.05,
+                          beta3=0.10,
+                          beta4=-0.01,
+                          sigma=0.82,
+                          sigma.b=0.48),
+                     list(beta0=4,
+                          beta1=-0.33,
+                          beta2=0.06,
+                          beta3=0.13,
+                          beta4=-0.15,
+                          sigma=0.81,
+                          sigma.b=0.45),
+                     list(beta0=3.5,
+                          beta1=-0.45,
+                          beta2=0.07,
+                          beta3=0.15,
+                          beta4=-0.012,
+                          sigma=0.76,
+                          sigma.b=0.2))
+
+#mastitis_mod <- jags.model(file="mastitis.jag",
+#                           data=mastitis_dat,
+#                           n.chains=3,
+#                           inits=mastitis_ini,
+#                           n.adapt=300,n.burnin=)
+
+#mastitis_samples <- coda.samples(model=mastitis_mod,
+#variable.names=c("beta0","beta1","beta2","beta3","beta4","sigma","sigma.b"),n.iter=15000)
+#mastitis_samples2 <- update(mastitis_mod,n.iter=5000)
+
+#Using R2JAGS
+mastitis_mod2 <- jags(data=mastitis_dat,inits=mastitis_ini,
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma","sigma.b"),n.iter=15000,n.burnin=5000,n.chains=3,model.file="mastitis.jag")
+
+```
+
+
+### Non-Linear Model (Rabbit)
+
+```{r question2}
+#removing the rabbit with a negative lens
+set.seed(123)
+rabbit <- rabbit[rabbit$Lens>0,]
+
+cat("
+    model{
+      for(i in 1:N){
+        mu[i] = alpha*exp(-(beta/(Age[i] + gamma)))
+        epsilon[i] = Lens[i] - mu[i]
+        Lens[i] ~ dnorm(mu[i],tau.e)
+        #samppling a new lens
+        Lens.new[i] ~ dnorm(mu[i], tau.e)
+        epsilon.new[i] = Lens.new[i] - mu[i]
+      }
+
+        ##PPCs
+        #test1 min and max
+        epsilon_min <- min(epsilon[])
+        epsilon.new_min <- min(epsilon.new[])
+
+        epsilon_max <- max(epsilon[])
+        epsilon.new_max <- max(epsilon.new[])
+
+        #tests
+        t_min <- step(epsilon.new_min - epsilon_min)
+        t_max <- step(epsilon.new_max - epsilon_max)
+
+        ##test2 Sinharay and Stern
+        N_med <- round(N/2)
+        epsilon_sort <- sort(epsilon)
+        epsilon_med <- epsilon_sort[N_med]
+        epsilon.new_sort <- sort(epsilon.new)
+        epsilon.new_med <- epsilon.new_sort[N_med]
+
+        ss <- abs(epsilon_max - epsilon_med) - abs(epsilon_min - epsilon_med)
+        ss.rep <-abs(epsilon.new_max - epsilon.new_med) - abs(epsilon.new_min - epsilon.new_med)
+        ss.test <- step(ss.rep - ss)  	
+        
+        ##tests3 Skewness and Kurtosis
+        for(k in 1:N){
+            #skewness
+            skb[k] <- pow((epsilon[k] - 0)/sigma.e,3)
+            skb.rep[k] <- pow((epsilon.new[k] - 0)/sigma.e,3)
+            #kurtosis
+            kkb[k] <- pow((epsilon[k] - 0)/sigma.e,4)
+            kkb.rep[k] <- pow((epsilon.new[k] - 0)/sigma.e,4)
+        }
+
+        skew_epsilon <- mean(skb[])
+        skew_epsilon.new <- mean(skb.rep[])
+        #skewness test
+        skew_test <- step(skew_epsilon.new - skew_epsilon)
+      
+        kurt_epsilon <- mean(kkb[])-3
+        kurt_epsilon.new <- mean(kkb.rep[])-3
+        kurt_test <- step(kurt_epsilon.new - kurt_epsilon)
+
+      ###test 4 Kolmogorov
+      rank_epsilon <- sort(epsilon[])
+      rank_epsilon.new <- sort(epsilon.new[])
+
+      for(k in 1:N){
+        F_epsilon[k] <- phi(rank_epsilon[k])
+        F_epsilon.new[k] <- phi(rank_epsilon.new[k])
+
+        F_diff[k] <- max(F_epsilon[k] - (k-1)/N, k/N - F_epsilon[k])
+        F_diff.rep[k] <- max(F_epsilon.new[k] - (k-1)/N, k/N - F_epsilon.new[k])
+      }
+      ks_epsilon <- max(F_diff)
+      ks_epsilon.new <- max(F_diff.rep)
+        
+      ks_test <- step(ks_epsilon.new - ks_epsilon)
+
+      ###tests
+      ppc_test[1] <- t_min
+      ppc_test[2] <- t_max
+      ppc_test[3] <- ss.test
+      ppc_test[4] <- skew_test
+      ppc_test[5] <- kurt_test
+      ppc_test[6] <- ks_test
+
+    ###PPC measures
+      #ppc_measure[1] <- b_min
+      #ppc_measure[2] <- b.rep_min
+      #ppc_measure[3] <- b_max
+      #ppc_measure[4] <- b.rep_max
+      #ppc_measure[5] <- ss
+      #ppc_measure[6] <- ss.rep
+      #ppc_measure[7] <- skew_b
+      #ppc_measure[8] <- skew_b.rep
+      #ppc_measure[9] <- kurt_b
+      #ppc_measure[10] <- kurt_b.rep
+      #ppc_measure[11] <- ks_b
+      #ppc_measure[12] <- ks_b.rep
+
+      
+      
+    #prior
+    alpha ~ dnorm(0,1.0E-6)
+    beta ~ dnorm(0,1.0E-6)
+    gamma ~ dnorm(0,1.0E-6)
+    #variance of epsilon
+    tau.e = pow(sigma.e,-2)
+    sigma.e ~ dgamma(0.001,0.001)
+    }
+    
+    ",file="rabbits1.jag")
+
+#the data set
+rabbit_data <- list(N=nrow(rabbit),
+                    Age=rabbit$Age,
+                    Lens=rabbit$Lens)
+
+#initial values
+rabbit_init <- list(list(alpha=279,
+                         beta=127,
+                         gamma=36,
+                         sigma.e=60),
+                    list(alpha=280,
+                         beta=130,
+                         gamma=38,
+                         sigma.e=65),
+                    list(alpha=275,
+                         beta=124,
+                         gamma=34,
+                         sigma.e=62))
+
+rabbit_model1 <- jags(data=rabbit_data,inits=rabbit_init,parameters.to.save=c("gamma","beta","alpha","sigma.e"),n.thin=10,n.iter=100000,n.burnin=50000,n.chains=3,model.file="rabbits1.jag")
+
+#
+rabbit_model1_mcmc <- as.mcmc(rabbit_model1)
+#
+rabbit_model1summary <- summary(rabbit_model1_mcmc)
+
+
+####Second Model
+rabbit$loglens <- log(rabbit$Lens)
+
+cat(
+  "
+  model{
+  for(i in 1:N){
+      mu[i] = alpha + exp(-(beta/(Age[i] + gamma)))
+      epsilon[i] = loglens[i] - mu[i]
+      loglens[i] ~ dnorm(mu[i],tau.e)
+  }
+    #prior
+    alpha ~ dnorm(0,1.0E-6)
+    beta ~ dnorm(0,1.0E-6)
+    gamma ~ dnorm(0,1.0E-6)
+    #variance of epsilon
+    tau.e = pow(sigma.e,-2)
+    sigma.e ~ dgamma(0.001,0.001)
+
+}
+  ", file="rabbits2.jag")
+
+rabbit_data2 <- list(N=nrow(rabbit),
+                    Age=rabbit$Age,
+                    loglens=rabbit$loglens)
+
+rabbit_init2 <- list(list(alpha=279,
+                         beta=127,
+                         gamma=36,
+                         sigma.e=60),
+                    list(alpha=280,
+                         beta=130,
+                         gamma=38,
+                         sigma.e=65),
+                    list(alpha=275,
+                         beta=124,
+                         gamma=34,
+                         sigma.e=62))
+
+rabbit_model2 <- jags(data=rabbit_data2,inits=rabbit_init2,parameters.to.save=c("gamma","beta","alpha","sigma.e","epsilon"),n.thin=1,n.iter=100000,n.burnin=50000,n.chains=3,model.file="rabbits2.jag")
+
+rabbit_model2_mcmc <- as.mcmc(rabbit_model2)
+rabbit_model2_ggs <- ggs(rabbit_model2_mcmc)
+
+
+nonlinear <- function(parms,age,loglens){
+  alpha <- parms[1]; beta <- parms[2]; gamma <- parms[3]; sigma <- parms[3]
+  
+  -ll2
+}
+
+test1 <- optim(fn=nonlinear,par=c(alpha=4.25,beta=75,gamma=0.35,sigma=14.12),age=rabbit$Age,loglens=log(rabbit$Lens),method="SANN",control=list(maxit=100000),hessian=T)
+
+test3 <- optim(fn=nonlinear,par=c(alpha=4.25,beta=75,gamma=0.35,sigma=0.00001),age=rabbit$Age,loglens=log(rabbit$Lens),method="L-BFGS-B",control=list(maxit=1000000),hessian=T,lower=c(-Inf,-Inf,-Inf,0),upper=rep(Inf,4))
+
+test2 <- nlm(f=nonlinear,p=c(alpha=4.245,beta=76.58,gamma=0.358,sigma=0.154),age=rabbit$Age,loglens=log(rabbit$Lens),hessian=T,iterlim=5000)
+
+
+```
+
+
+

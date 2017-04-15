@@ -1,0 +1,17 @@
+
+  model{
+  for(i in 1:N){
+      mu[i] = alpha + exp(-(beta/(Age[i] + gamma)))
+      epsilon[i] = loglens[i] - mu[i]
+      loglens[i] ~ dnorm(mu[i],tau.e)
+  }
+    #prior
+    alpha ~ dnorm(0,1.0E-6)
+    beta ~ dnorm(0,1.0E-6)
+    gamma ~ dnorm(0,1.0E-6)
+    #variance of epsilon
+    tau.e = pow(sigma.e,-2)
+    sigma.e ~ dgamma(0.001,0.001)
+
+}
+  

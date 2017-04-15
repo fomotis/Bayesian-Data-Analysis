@@ -1,0 +1,128 @@
+
+    model
+    {
+      for(j in 1:N)
+      {
+         ##Zeros trick
+        phi[j] <-  -ll[j] + 10000
+        zeroes[j] ~ dpois(phi[j])
+
+        #hierarchical centering
+         epsilon[j] <- (logmp[j] -  beta1*Heifer[j] - beta2*Quarter1[j] - beta3*Quarter2[j] - beta4*Quarter3[j] - b[Cowid[j]])/sigma.e
+
+         #survival and density function
+         s0[j] <- 1 - phi(epsilon[j])
+         f0[j] <- pow(2*3.14,-0.5)*exp(-0.5*pow(epsilon[j],2))
+         
+         ll[j] <- Status[j]*log(f0[j]/(Midpoint[j]*sigma.e)) + (1 - Status[j])*log(s0[j])
+        
+      }
+
+      #random effects
+      for(k in 1:U)
+      {
+        b[k] ~ dnorm(beta0,tau.b)
+        #distribution of future observation k (b.rep)
+        b.rep[k] ~ dnorm(beta0,tau.b)
+      }
+
+        ##PPCs
+        #test1 min and max
+        b_min <- min(b[])
+        b.rep_min <- min(b.rep[])
+
+        b_max <- max(b[])
+        b.rep_max <- max(b.rep[])
+
+        #tests
+        t_min <- step(b.rep_min - b_min)
+        t_max <- step(b.rep_max - b_max)
+
+        ##test2 Sinharay and Stern
+        U_med <- round(U/2)
+        b_sort <- sort(b)
+        b_med <- b_sort[U_med]
+        b.rep_sort <- sort(b.rep)
+        b.rep_med <- b.rep_sort[U_med]
+
+        ss <- abs(b_max - b_med) - abs(b_min - b_med)
+        ss.rep <-abs(b.rep_max - b.rep_med) - abs(b.rep_min - b.rep_med)
+        ss.test <- step(ss.rep - ss)  	
+        
+        ##tests3 Skewness and Kurtosis
+        for(k in 1:U){
+            #skewness
+            skb[k] <- pow((b[k] - beta0)/sigma.b,3)
+            skb.rep[k] <- pow((b.rep[k] - beta0)/sigma.b,3)
+            #kurtosis
+            kkb[k] <- pow((b[k] - beta0)/sigma.b,4)
+            kkb.rep[k] <- pow((b.rep[k] - beta0)/sigma.b,4)
+        }
+
+        skew_b <- mean(skb[])
+        skew_b.rep <- mean(skb.rep[])
+        #skewness test
+        skew_test <- step(skew_b.rep-skew_b)
+      
+        kurt_b <- mean(kkb[])-3
+        kurt_b.rep <- mean(kkb.rep[])-3
+        kurt_test <- step(kurt_b.rep - kurt_b)
+
+      ###test 4 Kolmogorov
+      rank_b <- sort(b[])
+      rank_b.rep <- sort(b.rep[])
+
+      for(k in 1:U){
+        F_b[k] <- phi(rank_b[k])
+        F_b.rep[k] <- phi(rank_b.rep[k])
+
+        F_diff[k] <- max(F_b[k] - (k-1)/U, k/U - F_b[k])
+        F_diff.rep[k] <- max(F_b.rep[k] - (k-1)/U, k/U - F_b.rep[k])
+      }
+      ks_b <- max(F_diff)
+      ks_b.rep <- max(F_diff.rep)
+        
+      ks_test <- step(ks_b.rep - ks_b)
+
+      ###tests
+      ppc_test[1] <- t_min
+      ppc_test[2] <- t_max
+      ppc_test[3] <- ss.test
+      ppc_test[4] <- skew_test
+      ppc_test[5] <- kurt_test
+      ppc_test[6] <- ks_test
+
+    ###PPC measures
+      ppc_measure[1] <- b_min
+      ppc_measure[2] <- b.rep_min
+      ppc_measure[3] <- b_max
+      ppc_measure[4] <- b.rep_max
+      ppc_measure[5] <- ss
+      ppc_measure[6] <- ss.rep
+      ppc_measure[7] <- skew_b
+      ppc_measure[8] <- skew_b.rep
+      ppc_measure[9] <- kurt_b
+      ppc_measure[10] <- kurt_b.rep
+      ppc_measure[11] <- ks_b
+      ppc_measure[12] <- ks_b.rep
+      
+      #####Priors####
+
+      #Priors(fixed effects)
+      beta0 ~ dnorm(0,1.0E-3)
+      beta1 ~ dnorm(0,1.0E-3)
+      beta2 ~ dnorm(0,1.0E-3)
+      beta3 ~ dnorm(0,1.0E-3)
+      beta4 ~ dnorm(0,1.0E-3)
+
+      #variance within cows
+      sigma.e ~ dgamma(0.001,0.001)
+      
+      #variance between cows
+      tau.b <- pow(sigma.b,-2)
+      sigma.b ~ dunif(0,100)
+
+
+    }
+    
+    
