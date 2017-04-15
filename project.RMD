@@ -18,6 +18,7 @@ library(R2jags)
 #The 2 Data set
 mastitis <- read.table('./Data/mastitis.dat',header=T,sep=',')
 rabbit <- read.table('./Data/rabbit.txt',header=T)
+rabbit <- rabbit[rabbit$Lens>0,]
 ```
 
 ### Exploratory Analysis
@@ -77,7 +78,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis2.jag")
+    ",file="./JagsPrograms/mastitis2.jag")
 
 #the data
 mastitisdata <- list(Cowid=mastitis$Cowid,
@@ -116,7 +117,7 @@ mastitisini <- list(list(beta0=4.2,
                           sigma.b=0.2))
 
 mastitis_model <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=50000,n.burnin=25000,n.chains=length(mastitisini),model.file="mastitis2.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=50000,n.burnin=25000,n.chains=length(mastitisini),model.file="./JagsPrograms/mastitis2.jag",n.thin=1,DIC=T)
 
 #as an mcmc object
 mastitis_model_mcmc <- as.mcmc(mastitis_model)
@@ -193,7 +194,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_hcentering.jag")
+    ",file="./JagsPrograms/mastitis_hcentering.jag")
 
 mastitisdata <- list(Cowid=mastitis$Cowid,
                      Midpoint=mastitis$Midpoint,
@@ -208,7 +209,7 @@ mastitisdata <- list(Cowid=mastitis$Cowid,
                      N=nrow(mastitis))
 
 mastitis_hmodel <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcentering.jag",n.thin=1,DIC=T)
 
 ##Convergence check for the hierarchical centered model(high autocorrelation noted
 #for beta0 and beta1)
@@ -381,10 +382,10 @@ cat("
 
     }
     
-    ",file="mastitis_hcenteringPPC.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringPPC.jag")
 
 mastitis_ppc <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("ppc_test","ppc_measure"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringPPC.jag",n.thin=1,DIC=T)
+parameters.to.save=c("ppc_test","ppc_measure"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringPPC.jag",n.thin=1,DIC=T)
 
 ####convert to MCMC
 mastitis_ppc_mcmc <- as.mcmc(mastitis_ppc)
@@ -436,10 +437,10 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_hcenteringP2.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringP2.jag")
 
 mastitis_prior1 <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("beta0","beta1","beta2","beta3","beta4"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringP2.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringP2.jag",n.thin=1,DIC=T)
 
 
 ####varying prior for random effects()
@@ -484,10 +485,10 @@ cat("
       sigma.b ~ dunif(0,1.0E9)
     }
     
-    ",file="mastitis_hcenteringP3.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringP3.jag")
 
 mastitis_prior2 <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("sigma.b","sigma.e","b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringP3.jag",n.thin=1,DIC=T)
+parameters.to.save=c("sigma.b","sigma.e","b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringP3.jag",n.thin=1,DIC=T)
 
 ###Not much effect was observed when the priors was varied
 summary(as.mcmc(mastitis_prior2))
@@ -536,7 +537,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_hcenteringnoHiefer.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringnoHiefer.jag")
 
 mastitis_noH_data <- list(Cowid=mastitis$Cowid,
                      Midpoint=mastitis$Midpoint,
@@ -571,7 +572,7 @@ mastitis_noH_ini <- list(list(beta0=4.2,
 )
 
 mastitis_noHiefer <- jags(data=mastitis_noH_data,inits=mastitis_noH_ini,
-parameters.to.save=c("beta0","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoHiefer.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringnoHiefer.jag",n.thin=1,DIC=T)
 
 summary(as.mcmc(mastitis_noHiefer))
 DIC_noHiefer <- mastitis_noHiefer$BUGSoutput$DIC - (2*400*10000)
@@ -616,7 +617,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_hcenteringnoQuarter.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringnoQuarter.jag")
 
 mastitis_noQ_data <- list(Cowid=mastitis$Cowid,
                      Midpoint=mastitis$Midpoint,
@@ -643,7 +644,7 @@ mastitis_noQ_ini <- list(list(beta0=4.2,
 )
 
 mastitis_noquarter <- jags(data=mastitis_noQ_data,inits=mastitis_noQ_ini,
-parameters.to.save=c("beta0","beta1","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoQuarter.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta1","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringnoQuarter.jag",n.thin=1,DIC=T)
 
 summary(as.mcmc(mastitis_noquarter))
 #
@@ -690,7 +691,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_hcenteringnoCovariates.jag")
+    ",file="./JagsPrograms/mastitis_hcenteringnoCovariates.jag")
 
 mastitis_noCOV_data <- list(Cowid=mastitis$Cowid,
                      Midpoint=mastitis$Midpoint,
@@ -712,7 +713,7 @@ mastitis_noCOV_ini <- list(list(beta0=4.2,
 )
 
 mastitis_noCovariates <- jags(data=mastitis_noCOV_data,inits=mastitis_noCOV_ini,
-parameters.to.save=c("beta0","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcenteringnoCovariates.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcenteringnoCovariates.jag",n.thin=1,DIC=T)
 
 
 summary(as.mcmc(mastitis_noCovariates))
@@ -755,7 +756,7 @@ cat("
       sigma.e ~ dunif(0,100)
     }
     
-    ",file="mastitis_independent.jag")
+    ",file="./JagsPrograms/mastitis_independent.jag")
 
 #the data
 mastitis_independent_data <- list(
@@ -792,10 +793,14 @@ mastitis_independent_ini <- list(list(beta0=4.2,
                           sigma.e=0.76
                           ))
 
-mastitis_inimodel <- jags(data=mastitis_independent_data,inits=mastitis_independent_ini, parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_independent.jag",n.thin=1,DIC=T)
+mastitis_inimodel <- jags(data=mastitis_independent_data,inits=mastitis_independent_ini, parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_independent.jag",n.thin=1,DIC=T)
 
 #Adjusted DIC for the independent model
 DIC_inimodel <- mastitis_inimodel$BUGSoutput$DIC - (2*10000*400)
+
+
+
+
 
 ####Median survival Time for each group
 
@@ -855,10 +860,10 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis_median.jag")
+    ",file="./JagsPrograms/mastitis_median.jag")
 
 mastitis_median <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("med_Q4_h0","med_Q4_h1","med_Q1_h0","med_Q1_h1","med_Q2_h0","med_Q2_h1","med_Q3_h0","med_Q3_h1"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_median.jag",n.thin=1,DIC=T)
+parameters.to.save=c("med_Q4_h0","med_Q4_h1","med_Q1_h0","med_Q1_h1","med_Q2_h0","med_Q2_h1","med_Q3_h0","med_Q3_h1"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_median.jag",n.thin=1,DIC=T)
 
 
 
@@ -925,14 +930,14 @@ cat("
       nu.inverse.b ~ dunif(0,1)
     }
     
-    ",file="mastitis_hcentering_trandom.jag")
+    ",file="./JagsPrograms/mastitis_hcentering_trandom.jag")
 
 mastitis_hmodel_trandom <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma.e","sigma.b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
 
 #monitoring Random effects
 mastitis_hmodel2_trandom <- jags(data=mastitisdata,inits=mastitisini,
-parameters.to.save=c("b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
+parameters.to.save=c("b"),n.iter=40000,n.burnin=20000,n.chains=3,model.file="./JagsPrograms/mastitis_hcentering_trandom.jag",n.thin=1,DIC=T)
 
 hist(mastitis_hmodel2_trandom$BUGSoutput$mean$b)
 
@@ -991,7 +996,7 @@ cat("
       sigma.b ~ dunif(0,100)
     }
     
-    ",file="mastitis.jag")
+    ",file="./JagsPrograms/mastitis.jag")
 
 #The data
 mastitis_dat <- list(Midpoint=mastitis$Midpoint,
@@ -1041,7 +1046,7 @@ mastitis_ini <- list(list(beta0=4.2,
 
 #Using R2JAGS
 mastitis_mod2 <- jags(data=mastitis_dat,inits=mastitis_ini,
-parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma","sigma.b"),n.iter=15000,n.burnin=5000,n.chains=3,model.file="mastitis.jag")
+parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma","sigma.b"),n.iter=15000,n.burnin=5000,n.chains=3,model.file="./JagsPrograms/mastitis.jag")
 
 ```
 
@@ -1051,7 +1056,6 @@ parameters.to.save=c("beta0","beta1","beta2","beta3","beta4","sigma","sigma.b"),
 ```{r question2}
 #removing the rabbit with a negative lens
 set.seed(123)
-rabbit <- rabbit[rabbit$Lens>0,]
 
 cat("
     model{
@@ -1155,7 +1159,7 @@ cat("
     sigma.e ~ dgamma(0.001,0.001)
     }
     
-    ",file="rabbits1.jag")
+    ",file="./JagsPrograms/rabbits1.jag")
 
 #the data set
 rabbit_data <- list(N=nrow(rabbit),
@@ -1176,7 +1180,7 @@ rabbit_init <- list(list(alpha=279,
                          gamma=34,
                          sigma.e=62))
 
-rabbit_model1 <- jags(data=rabbit_data,inits=rabbit_init,parameters.to.save=c("gamma","beta","alpha","sigma.e"),n.thin=10,n.iter=100000,n.burnin=50000,n.chains=3,model.file="rabbits1.jag")
+rabbit_model1 <- jags(data=rabbit_data,inits=rabbit_init,parameters.to.save=c("gamma","beta","alpha","sigma.e"),n.thin=10,n.iter=100000,n.burnin=50000,n.chains=3,model.file="./JagsPrograms/rabbits1.jag")
 
 #
 rabbit_model1_mcmc <- as.mcmc(rabbit_model1)
@@ -1204,7 +1208,7 @@ cat(
     sigma.e ~ dgamma(0.001,0.001)
 
 }
-  ", file="rabbits2.jag")
+  ", file="./JagsPrograms/rabbits2.jag")
 
 rabbit_data2 <- list(N=nrow(rabbit),
                     Age=rabbit$Age,
@@ -1223,7 +1227,7 @@ rabbit_init2 <- list(list(alpha=279,
                          gamma=34,
                          sigma.e=62))
 
-rabbit_model2 <- jags(data=rabbit_data2,inits=rabbit_init2,parameters.to.save=c("gamma","beta","alpha","sigma.e","epsilon"),n.thin=1,n.iter=100000,n.burnin=50000,n.chains=3,model.file="rabbits2.jag")
+rabbit_model2 <- jags(data=rabbit_data2,inits=rabbit_init2,parameters.to.save=c("gamma","beta","alpha","sigma.e","epsilon"),n.thin=1,n.iter=100000,n.burnin=50000,n.chains=3,model.file="./JagsPrograms/rabbits2.jag")
 
 rabbit_model2_mcmc <- as.mcmc(rabbit_model2)
 rabbit_model2_ggs <- ggs(rabbit_model2_mcmc)
